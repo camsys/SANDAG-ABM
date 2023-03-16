@@ -2,6 +2,7 @@
 # See full license in LICENSE.txt.
 import datetime
 import logging
+import os
 import sys
 
 import numpy as np
@@ -68,8 +69,9 @@ def write_to_datalake(output_dir):
     # sas_url = client.get_secret(secretName)
 
     sas_url = ""
+
     container = ContainerClient.from_container_url(sas_url)
-    datetimestamp = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+    datetimestamp = datetime.datetime.now()
 
     output_tables_settings_name = "output_tables"
 
@@ -147,8 +149,28 @@ def write_to_datalake(output_dir):
                 df.index, pd.MultiIndex
             )
 
+            # add column with timestamp
+            df['timestamp'] = pd.to_datetime(datetimestamp)
+
+            # Extract base filename and extension
+            base_filename, ext = os.path.splitext(os.path.basename(file_name))
+
+            # add timestamp to output filename
+            model_output_file = base_filename + "_" + \
+                datetimestamp.strftime('%Y-%m-%d_%H-%M-%S')
+
+            # Extract table name from base filename, e.g. households, trips, persons, etc.
+            tablename = base_filename.split('final_')[1]
+
+            # Create new folder structure with tablename and timestamp
+            year_folder = datetimestamp.strftime('%Y')
+            month_folder = datetimestamp.strftime('%m')
+            day_folder = datetimestamp.strftime('%d')
+            lake_file = f"{tablename}/{year_folder}/{month_folder}/{model_output_file}{ext}"
+
             # write to data lake
             output = StringIO()
-            output = df.to_csv(index_label="idx", encoding="utf-8")
-            lake_file = datetimestamp + "/" + file_name
-            blob_client = container.upload_blob(name=lake_file, data=output)
+            output = df.to_csv(date_format='%Y-%m-%d %H:%M:%S',
+                               index=write_index, encoding="utf-8")
+            blob_client = container.upload_blob(
+                name=lake_file, data=output, encoding="utf-8")
