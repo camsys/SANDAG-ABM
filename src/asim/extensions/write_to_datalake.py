@@ -21,8 +21,15 @@ logger = logging.getLogger(__name__)
 @inject.step()
 def write_to_datalake(output_dir):
     """
-    Write pipeline tables as csv files (in output directory) as specified by output_tables list
-    in settings file.
+    Write pipeline tables as csv files to Azure Data Lake Storage as
+    specified by output_tables list in settings file.
+
+    Azure CLI must be installed on server.
+    Type 'az login' from a windows command prompt.
+    This will open a web browser for azure login.
+
+    Environment variables on windows must be set for key vault url
+    and secret name on Azure.
 
     'output_tables' can specify either a list of output tables to include or to skip
     if no output_tables list is specified, then all checkpointed tables will be written
@@ -62,15 +69,21 @@ def write_to_datalake(output_dir):
 
     """
 
-    # Get SAS token from key vault
-    # VAULT_URL = os.environ["VAULT_URL"]
-    # credential = DefaultAzureCredential()
-    # client = KeyClient(vault_url=VAULT_URL, credential=credential)
-    # sas_url = client.get_secret(secretName)
+    # get key vault url and secret name environment variables
+    azure_vault_url = os.environ["VAULT_URL"]
+    azure_secret_name = os.environ["VAULT_SECRET_NAME"]
 
-    sas_url = ""
+    # user authentication with Azure
+    credential = DefaultAzureCredential()
 
+    # get SAS token from key vault
+    client = SecretClient(vault_url=azure_vault_url, credential=credential)
+    sas_url = client.get_secret(azure_secret_name).value
+
+    # create Azure ContainerClient object using the SAS URL
     container = ContainerClient.from_container_url(sas_url)
+
+    # get the current date and time to label model runs
     datetimestamp = datetime.datetime.now()
 
     output_tables_settings_name = "output_tables"
@@ -78,8 +91,7 @@ def write_to_datalake(output_dir):
     output_tables_settings = setting(output_tables_settings_name)
 
     if output_tables_settings is None:
-        logger.info(
-            "No output_tables specified in settings file. Nothing to write.")
+        logger.info("No output_tables specified in settings file. Nothing to write.")
         return
 
     action = output_tables_settings.get("action")
@@ -150,27 +162,32 @@ def write_to_datalake(output_dir):
             )
 
             # add column with timestamp
-            df['timestamp'] = pd.to_datetime(datetimestamp)
+            df["timestamp"] = pd.to_datetime(datetimestamp)
 
-            # Extract base filename and extension
+            # extract base filename and extension
             base_filename, ext = os.path.splitext(os.path.basename(file_name))
 
             # add timestamp to output filename
-            model_output_file = base_filename + "_" + \
-                datetimestamp.strftime('%Y-%m-%d_%H-%M-%S')
+            model_output_file = (
+                base_filename + "_" + datetimestamp.strftime("%Y-%m-%d_%H-%M-%S")
+            )
 
-            # Extract table name from base filename, e.g. households, trips, persons, etc.
-            tablename = base_filename.split('final_')[1]
+            # extract table name from base filename, e.g. households, trips, persons, etc.
+            tablename = base_filename.split("final_")[1]
 
-            # Create new folder structure with tablename and timestamp
-            year_folder = datetimestamp.strftime('%Y')
-            month_folder = datetimestamp.strftime('%m')
-            day_folder = datetimestamp.strftime('%d')
-            lake_file = f"{tablename}/{year_folder}/{month_folder}/{model_output_file}{ext}"
+            # create new folder structure with tablename and timestamp
+            year_folder = datetimestamp.strftime("%Y")
+            month_folder = datetimestamp.strftime("%m")
+            day_folder = datetimestamp.strftime("%d")
+            lake_file = (
+                f"{tablename}/{year_folder}/{month_folder}/{model_output_file}{ext}"
+            )
 
             # write to data lake
             output = StringIO()
-            output = df.to_csv(date_format='%Y-%m-%d %H:%M:%S',
-                               index=write_index, encoding="utf-8")
+            output = df.to_csv(
+                date_format="%Y-%m-%d %H:%M:%S", index=write_index, encoding="utf-8"
+            )
             blob_client = container.upload_blob(
-                name=lake_file, data=output, encoding="utf-8")
+                name=lake_file, data=output, encoding="utf-8"
+            )
