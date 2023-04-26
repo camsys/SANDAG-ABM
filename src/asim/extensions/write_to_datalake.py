@@ -3,15 +3,14 @@
 import datetime
 import logging
 import os
-import sys
+import socket
+import uuid
 
 import numpy as np
 import pandas as pd
 
 from activitysim.core import config, inject, pipeline
 from activitysim.core.config import setting
-from azure.identity import DefaultAzureCredential
-from azure.keyvault.secrets import SecretClient
 from azure.storage.blob import ContainerClient
 from io import StringIO
 
@@ -69,29 +68,31 @@ def write_to_datalake(output_dir):
 
     """
 
-    # get key vault url and secret name environment variables
-    azure_vault_url = os.environ["VAULT_URL"]
-    azure_secret_name = os.environ["VAULT_SECRET_NAME"]
+    sas_url = os.environ["AZURE_STORAGE_SAS_TOKEN"]
 
-    # user authentication with Azure
-    credential = DefaultAzureCredential()
-
-    # get SAS token from key vault
-    client = SecretClient(vault_url=azure_vault_url, credential=credential)
-    sas_url = client.get_secret(azure_secret_name).value
-
-    # create Azure ContainerClient object using the SAS URL
+    # create Azure ContainerClient
     container = ContainerClient.from_container_url(sas_url)
 
-    # get the current date and time to label model runs
-    datetimestamp = datetime.datetime.now()
+    # generate the timestamp as a datetime object
+    now = datetime.datetime.now()
+
+    # format the timestamp as a string in a consistent format
+    timestamp_str = now.strftime("%Y-%m-%d_%H-%M-%S")
+
+    # create folder structure for hierarchical organization of files
+    year_folder = now.strftime("%Y")
+    month_folder = now.strftime("%m")
+
+    # generate a globally unique identifier
+    guid = uuid.uuid4().hex
 
     output_tables_settings_name = "output_tables"
 
     output_tables_settings = setting(output_tables_settings_name)
 
     if output_tables_settings is None:
-        logger.info("No output_tables specified in settings file. Nothing to write.")
+        logger.info(
+            "No output_tables specified in settings file. Nothing to write.")
         return
 
     action = output_tables_settings.get("action")
@@ -161,29 +162,26 @@ def write_to_datalake(output_dir):
                 df.index, pd.MultiIndex
             )
 
-            # add column with timestamp
-            df["timestamp"] = pd.to_datetime(datetimestamp)
-
             # extract base filename and extension
             base_filename, ext = os.path.splitext(os.path.basename(file_name))
 
-            # add timestamp to output filename
-            model_output_file = (
-                base_filename + "_" + datetimestamp.strftime("%Y-%m-%d_%H-%M-%S")
-            )
+            # add unique identifier
+            df["guid"] = guid
+
+            # add the timestamp as a new column to the DataFrame
+            df["timestamp"] = pd.to_datetime(now)
+
+            # Construct the model output filename w guid
+            model_output_file = f"{base_filename }_{timestamp_str}_{guid}{ext}"
 
             # extract table name from base filename, e.g. households, trips, persons, etc.
             tablename = base_filename.split("final_")[1]
 
-            # create new folder structure with tablename and timestamp
-            year_folder = datetimestamp.strftime("%Y")
-            month_folder = datetimestamp.strftime("%m")
-            day_folder = datetimestamp.strftime("%d")
             lake_file = (
-                f"{tablename}/{year_folder}/{month_folder}/{model_output_file}{ext}"
+                f"{tablename}/{year_folder}/{month_folder}/{model_output_file}"
             )
 
-            # write to data lake
+            # write tables to data lake
             output = StringIO()
             output = df.to_csv(
                 date_format="%Y-%m-%d %H:%M:%S", index=write_index, encoding="utf-8"
@@ -191,3 +189,41 @@ def write_to_datalake(output_dir):
             blob_client = container.upload_blob(
                 name=lake_file, data=output, encoding="utf-8"
             )
+
+    # create metadata table
+    username = os.getenv('USERNAME')
+    machine_name = socket.gethostname()
+    commit_hash = os.popen('git rev-parse HEAD').read().strip()
+    short_commit_hash = commit_hash[-7:]
+    branch_name = os.popen(
+        'git rev-parse --abbrev-ref HEAD').read().strip()
+
+    metadata = {'model_run_name': ['abm3_dev_test'],
+                'year': ['2022'],
+                'user_name': [username],
+                'machine_name': [machine_name],
+                'commit_hash': [short_commit_hash],
+                'branch_name': [branch_name],
+                'guid': [guid]
+                }
+
+    meta_df = pd.DataFrame(metadata)
+
+    # add the timestamp as a new column to the DataFrame
+    meta_df["timestamp"] = pd.to_datetime(now)
+
+    # generate metadata filename and path
+    metadata_file = f"scenario_{timestamp_str}_{guid}.csv"
+    metadata_path = (
+        f"meta_data/{year_folder}/{month_folder}/{metadata_file}"
+    )
+
+    # write metadata to data lake
+    output = StringIO()
+    output = meta_df.to_csv(
+        date_format="%Y-%m-%d %H:%M:%S", index=False, encoding="utf-8"
+    )
+
+    blob_client = container.upload_blob(
+        name=metadata_path, data=output, encoding="utf-8", overwrite=True
+    )
