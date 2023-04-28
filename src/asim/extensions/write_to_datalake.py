@@ -1,6 +1,7 @@
 # ActivitySim
 # See full license in LICENSE.txt.
 import datetime
+import git
 import logging
 import os
 import socket
@@ -15,6 +16,67 @@ from azure.storage.blob import ContainerClient
 from io import StringIO
 
 logger = logging.getLogger(__name__)
+
+
+def find_git_folder(start_dir):
+    """
+    Recursively search for the .git folder starting from module dir and going up the directory tree.
+    Returns the path to the .git folder if found, or None if not found.
+
+    Parameters
+    ----------
+    start_dir: str
+
+    Returns
+    -------
+    current_dir or None: str
+        The path to the .git folder if found, or None if not found.
+    """
+
+    import os
+    # Start with the given directory
+    current_dir = start_dir
+
+    # Keep searching parent directories until we reach the root directory
+    while current_dir != '/':
+        # Check if the .git folder exists in the current directory
+        git_folder = os.path.join(current_dir, '.git')
+        if os.path.isdir(git_folder):
+            return git_folder
+
+        # Move up to the parent directory
+        current_dir = os.path.dirname(current_dir)
+
+    # If we've reached the root directory and haven't found the .git folder, return None
+    return None
+
+
+def get_commit_info(repo_path):
+    """
+    Returns a dictionary containing the short commit hash and branch name of the Git repository
+    at the specified path.
+
+    Parameters
+    ----------
+    repo_path (str): The path to the Git repository.
+
+    Returns
+    -------
+    dict: A dictionary with the following keys:
+            - short_commit_hash (str): The first 7 characters of the current commit hash.
+            - branch_name (str): The name of the current active branch.
+            If the repository path is not a Git repository, both values will be empty strings.
+    """
+    try:
+        repo = git.Repo(repo_path)
+        # get the first 7 characters of the full commit hash
+        commit_hash = repo.head.commit.hexsha[:7]
+        branch_name = repo.active_branch.name
+    except git.InvalidGitRepositoryError:
+        commit_hash = ''
+        branch_name = ''
+
+    return {'short_commit_hash': commit_hash, 'branch_name': branch_name}
 
 
 @inject.step()
@@ -186,39 +248,33 @@ def write_to_datalake(output_dir, data_dir):
             output = df.to_csv(
                 date_format="%Y-%m-%d %H:%M:%S", index=write_index, encoding="utf-8"
             )
-            blob_client = container.upload_blob(
-                name=lake_file, data=output, encoding="utf-8"
-            )
+            # blob_client = container.upload_blob(
+            #    name=lake_file, data=output, encoding="utf-8"
+            # )
 
     # create metadata table
+    # repo branch name and commit hash
+    activitysim_dir = os.path.dirname(pipeline.__file__)
+    abm_dir = os.path.abspath(__file__)
+
+    activitysim_git_folder = find_git_folder(activitysim_dir)
+    abm_git_folder = find_git_folder(abm_dir)
+
+    asim_commit_info = get_commit_info(activitysim_git_folder)
+    abm_commit_info = get_commit_info(abm_git_folder)
+
     username = os.getenv('USERNAME')
     machine_name = socket.gethostname()
     inputdir, inputfile = os.path.split(data_dir[0])
-
-    # get branch name and commit hash
-    # assumes config file in ABM directory
-    config_path = inject.get_injectable("configs_dir")[0]
-    index = config_path.find('ABM')  # position in path
-    repo_path = config_path[:index + len('ABM')]  # ABM root dir
-    if os.path.isdir(os.path.join(repo_path, ".git")):  # check if git repo
-        with open(os.path.join(repo_path, ".git", "HEAD"), "r") as f:
-            ref = f.readline().strip()
-        if ref.startswith("ref:"):  # branch ref file
-            ref_file_path = os.path.join(repo_path, ".git", ref[5:])
-            with open(ref_file_path, "r") as f:
-                short_commit_hash = f.readline().strip()[-7:]
-                branch_name = ref_file_path.split("/")[-1]
-
-    # does not work when ABM installed on network drive
-    # commit_hash = os.popen('git rev-parse HEAD').read().strip()
-    # branch_name = os.popen('git rev-parse --abbrev-ref HEAD').read().strip()
 
     metadata = {'model_run_name': ['abm3_dev_test'],
                 'year': ['2022'],
                 'user_name': [username],
                 'machine_name': [machine_name],
-                'branch_name': [branch_name],
-                'commit_hash': [short_commit_hash],
+                'asim_branch_name': [asim_commit_info['branch_name']],
+                'asim_commit_hash': [asim_commit_info['short_commit_hash']],
+                'abm_branch_name': [abm_commit_info['branch_name']],
+                'abm_commit_hash': [abm_commit_info['short_commit_hash']],
                 'input_file': [inputfile],
                 'guid': [guid]
                 }
