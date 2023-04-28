@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 
 @inject.step()
-def write_to_datalake(output_dir):
+def write_to_datalake(output_dir, data_dir):
     """
     Write pipeline tables as csv files to Azure Data Lake Storage as
     specified by output_tables list in settings file.
@@ -193,17 +193,33 @@ def write_to_datalake(output_dir):
     # create metadata table
     username = os.getenv('USERNAME')
     machine_name = socket.gethostname()
-    commit_hash = os.popen('git rev-parse HEAD').read().strip()
-    short_commit_hash = commit_hash[-7:]
-    branch_name = os.popen(
-        'git rev-parse --abbrev-ref HEAD').read().strip()
+    inputdir, inputfile = os.path.split(data_dir[0])
+
+    # get branch name and commit hash
+    # assumes config file in ABM directory
+    config_path = inject.get_injectable("configs_dir")[0]
+    index = config_path.find('ABM')  # position in path
+    repo_path = config_path[:index + len('ABM')]  # ABM root dir
+    if os.path.isdir(os.path.join(repo_path, ".git")):  # check if git repo
+        with open(os.path.join(repo_path, ".git", "HEAD"), "r") as f:
+            ref = f.readline().strip()
+        if ref.startswith("ref:"):  # branch ref file
+            ref_file_path = os.path.join(repo_path, ".git", ref[5:])
+            with open(ref_file_path, "r") as f:
+                short_commit_hash = f.readline().strip()[-7:]
+                branch_name = ref_file_path.split("/")[-1]
+
+    # does not work when ABM installed on network drive
+    # commit_hash = os.popen('git rev-parse HEAD').read().strip()
+    # branch_name = os.popen('git rev-parse --abbrev-ref HEAD').read().strip()
 
     metadata = {'model_run_name': ['abm3_dev_test'],
                 'year': ['2022'],
                 'user_name': [username],
                 'machine_name': [machine_name],
-                'commit_hash': [short_commit_hash],
                 'branch_name': [branch_name],
+                'commit_hash': [short_commit_hash],
+                'input_file': [inputfile],
                 'guid': [guid]
                 }
 
