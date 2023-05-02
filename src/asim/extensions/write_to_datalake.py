@@ -234,23 +234,25 @@ def write_to_datalake(output_dir, data_dir):
             df["timestamp"] = pd.to_datetime(now)
 
             # Construct the model output filename w guid
-            model_output_file = f"{base_filename }_{timestamp_str}_{guid}{ext}"
+            model_output_file = f"{base_filename }_{timestamp_str}_{guid}"
 
             # extract table name from base filename, e.g. households, trips, persons, etc.
             tablename = base_filename.split("final_")[1]
 
             lake_file = (
-                f"{tablename}/{year_folder}/{month_folder}/{model_output_file}"
+                f"{tablename}/{year_folder}/{month_folder}/{model_output_file}.parquet"
             )
 
-            # write tables to data lake
+            # replace empty strings with None
+            # otherwise conversation error for boolean types
+            df.replace('', None, inplace=True)
+
             output = StringIO()
-            output = df.to_csv(
-                date_format="%Y-%m-%d %H:%M:%S", index=write_index, encoding="utf-8"
+            output = df.to_parquet()
+
+            blob_client = container.upload_blob(
+                name=lake_file, data=output, encoding="utf-8"
             )
-            # blob_client = container.upload_blob(
-            #    name=lake_file, data=output, encoding="utf-8"
-            # )
 
     # create metadata table
     # repo branch name and commit hash
