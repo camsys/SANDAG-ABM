@@ -13,6 +13,7 @@ import pandas as pd
 from activitysim.core import config, inject, pipeline
 from activitysim.core.config import setting
 from azure.storage.blob import ContainerClient
+from io import BytesIO
 from io import StringIO
 
 logger = logging.getLogger(__name__)
@@ -34,13 +35,14 @@ def find_git_folder(start_dir):
     """
 
     import os
+
     # Start with the given directory
     current_dir = start_dir
 
     # Keep searching parent directories until we reach the root directory
-    while current_dir != '/':
+    while current_dir != "/":
         # Check if the .git folder exists in the current directory
-        git_folder = os.path.join(current_dir, '.git')
+        git_folder = os.path.join(current_dir, ".git")
         if os.path.isdir(git_folder):
             return git_folder
 
@@ -73,10 +75,66 @@ def get_commit_info(repo_path):
         commit_hash = repo.head.commit.hexsha[:7]
         branch_name = repo.active_branch.name
     except git.InvalidGitRepositoryError:
-        commit_hash = ''
-        branch_name = ''
+        commit_hash = ""
+        branch_name = ""
 
-    return {'short_commit_hash': commit_hash, 'branch_name': branch_name}
+    return {"short_commit_hash": commit_hash, "branch_name": branch_name}
+
+
+def create_meta_df(input_dir, unique_id, ts):
+    """
+    create a metadata dataframe containing the git commit, branch, model run timestamp, guid,
+    and input data dir.
+
+    Parameters
+    ----------
+    input_dir: str
+       path to the input directory (crop or full)
+    guid: str
+        unique identifier for model run
+    now: str
+       timestamp
+
+    Returns
+    -------
+    metadata_df : pandas.DataFrame
+        description of the model run and columns (guid and model run
+        timestamp) to join tables (e.g. persons and trips) in a given model run.
+    """
+
+    # repo branch name and commit hash
+    activitysim_dir = os.path.dirname(pipeline.__file__)
+    abm_dir = os.path.abspath(__file__)
+
+    activitysim_git_folder = find_git_folder(activitysim_dir)
+    abm_git_folder = find_git_folder(abm_dir)
+
+    asim_commit_info = get_commit_info(activitysim_git_folder)
+    abm_commit_info = get_commit_info(abm_git_folder)
+
+    username = os.getenv("USERNAME")
+    machine_name = socket.gethostname()
+    inputdir, inputfile = os.path.split(input_dir)  # os.path.split(data_dir[0])
+
+    metadata = {
+        "model_run_name": ["abm3_dev_test"],
+        "year": ["2022"],
+        "user_name": [username],
+        "machine_name": [machine_name],
+        "asim_branch_name": [asim_commit_info["branch_name"]],
+        "asim_commit_hash": [asim_commit_info["short_commit_hash"]],
+        "abm_branch_name": [abm_commit_info["branch_name"]],
+        "abm_commit_hash": [abm_commit_info["short_commit_hash"]],
+        "input_file": [inputfile],
+        "guid": [unique_id],
+    }
+
+    meta_df = pd.DataFrame(metadata)
+
+    # add the timestamp as a new column to the DataFrame
+    meta_df["model_write_ts"] = pd.to_datetime(ts)
+
+    return meta_df
 
 
 @inject.step()
@@ -153,8 +211,7 @@ def write_to_datalake(output_dir, data_dir):
     output_tables_settings = setting(output_tables_settings_name)
 
     if output_tables_settings is None:
-        logger.info(
-            "No output_tables specified in settings file. Nothing to write.")
+        logger.info("No output_tables specified in settings file. Nothing to write.")
         return
 
     action = output_tables_settings.get("action")
@@ -176,7 +233,6 @@ def write_to_datalake(output_dir, data_dir):
         )
 
     for table_name in output_tables_list:
-
         if table_name == "checkpoints":
             df = pipeline.get_checkpoints()
         else:
@@ -231,7 +287,7 @@ def write_to_datalake(output_dir, data_dir):
             df["guid"] = guid
 
             # add the timestamp as a new column to the DataFrame
-            df["timestamp"] = pd.to_datetime(now)
+            df["model_write_ts"] = pd.to_datetime(now)
 
             # Construct the model output filename w guid
             model_output_file = f"{base_filename }_{timestamp_str}_{guid}"
@@ -245,52 +301,21 @@ def write_to_datalake(output_dir, data_dir):
 
             # replace empty strings with None
             # otherwise conversation error for boolean types
-            df.replace('', None, inplace=True)
+            df.replace("", None, inplace=True)
 
-            output = StringIO()
-            output = df.to_parquet()
+            parquet_file = BytesIO()
+            df.to_parquet(parquet_file, engine="pyarrow")
 
-            blob_client = container.upload_blob(
-                name=lake_file, data=output, encoding="utf-8"
-            )
+            # change the stream position back to the beginning after writing
+            parquet_file.seek(0)
 
-    # create metadata table
-    # repo branch name and commit hash
-    activitysim_dir = os.path.dirname(pipeline.__file__)
-    abm_dir = os.path.abspath(__file__)
+            container.upload_blob(name=lake_file, data=parquet_file)
 
-    activitysim_git_folder = find_git_folder(activitysim_dir)
-    abm_git_folder = find_git_folder(abm_dir)
-
-    asim_commit_info = get_commit_info(activitysim_git_folder)
-    abm_commit_info = get_commit_info(abm_git_folder)
-
-    username = os.getenv('USERNAME')
-    machine_name = socket.gethostname()
-    inputdir, inputfile = os.path.split(data_dir[0])
-
-    metadata = {'model_run_name': ['abm3_dev_test'],
-                'year': ['2022'],
-                'user_name': [username],
-                'machine_name': [machine_name],
-                'asim_branch_name': [asim_commit_info['branch_name']],
-                'asim_commit_hash': [asim_commit_info['short_commit_hash']],
-                'abm_branch_name': [abm_commit_info['branch_name']],
-                'abm_commit_hash': [abm_commit_info['short_commit_hash']],
-                'input_file': [inputfile],
-                'guid': [guid]
-                }
-
-    meta_df = pd.DataFrame(metadata)
-
-    # add the timestamp as a new column to the DataFrame
-    meta_df["timestamp"] = pd.to_datetime(now)
+    meta_df = create_meta_df(data_dir[0], guid, now)
 
     # generate metadata filename and path
     metadata_file = f"scenario_{timestamp_str}_{guid}.csv"
-    metadata_path = (
-        f"meta_data/{year_folder}/{month_folder}/{metadata_file}"
-    )
+    metadata_path = f"meta_data/{year_folder}/{month_folder}/{metadata_file}"
 
     # write metadata to data lake
     output = StringIO()
