@@ -17,6 +17,45 @@ Description,Target,Expression
 ,vot3,"np.where((_vot_bin_da == 3) | (_vot_bin_s2 == 3) | (_vot_bin_s3 ==3),1,0)"
 ,outbound,trips.outbound
 ,inbound,~trips.outbound
+
+#travel time
+,_Travel_Time,"odt_skims['SOV_NT_L_TIME'] * np.where(((trips.trip_mode == 'DRIVEALONE') & ~ownTrp & vot1),1,0)" 
+,_Travel_Time,"_Travel_Time + odt_skims['SOV_TR_L_TIME'] * np.where(((trips.trip_mode == 'DRIVEALONE') & ownTrp & vot1),1,0)" 
+,_Travel_Time,"_Travel_Time + odt_skims['HOV2_L_TIME'] * np.where((trips.trip_mode.isin(['SHARED2',1,'TNC_SINGLE']) & vot1),1,0)" 
+,_Travel_Time,"_Travel_Time + odt_skims['HOV3_L_TIME'] * np.where((trips.trip_mode.isin(['SHARED3','TNC_SHARED']) & vot1),1,0)" 
+,_Travel_Time,"_Travel_Time + odt_skims['SOV_NT_M_TIME'] * np.where(((trips.trip_mode == 'DRIVEALONE') & ~ownTrp & vot2),1,0)" 
+,_Travel_Time,"_Travel_Time + odt_skims['SOV_TR_M_TIME'] * np.where(((trips.trip_mode == 'DRIVEALONE') & ownTrp & vot2),1,0)"
+,_Travel_Time,"_Travel_Time + odt_skims['HOV2_M_TIME'] * np.where((trips.trip_mode.isin(['SHARED2',1,'TNC_SINGLE']) & vot2),1,0)" 
+,_Travel_Time,"_Travel_Time + odt_skims['HOV3_M_TIME'] * np.where((trips.trip_mode.isin(['SHARED3','TNC_SHARED']) & vot2),1,0)" 
+,_Travel_Time,"_Travel_Time + odt_skims['SOV_NT_H_TIME'] * np.where(((trips.trip_mode == 'DRIVEALONE') & ~ownTrp & vot3),1,0)"
+,_Travel_Time,"_Travel_Time + odt_skims['SOV_TR_H_TIME'] * np.where(((trips.trip_mode == 'DRIVEALONE') & ownTrp & vot3),1,0)"
+,_Travel_Time,"_Travel_Time + odt_skims['HOV2_H_TIME'] * np.where((trips.trip_mode.isin(['SHARED2',1,'TNC_SINGLE']) & vot3),1,0)" 
+,_Travel_Time,"_Travel_Time + odt_skims['HOV3_H_TIME'] * np.where((trips.trip_mode.isin(['SHARED3','TNC_SHARED']) & vot3),1,0)" 
+#,_Travel_Time,"_Travel_Time + odt_skims['WALK_LOC'] * np.where((trips.trip_mode == 'WALK_LOC'),1,0)"
+#,_Travel_Time,"_Travel_Time + odt_skims['WALK_PRM'] * np.where((trips.trip_mode == 'WALK_PRM'),1,0)"
+#,_Travel_Time,"_Travel_Time + odt_skims['WALK_MIX'] * np.where((trips.trip_mode == 'WALK_MIX'),1,0)"
+#,_Travel_Time,"_Travel_Time + odt_skims['BIKE'] * np.where((trips.trip_mode == 'BIKE'),1,0)"
+#,_Travel_Time,"_Travel_Time + odt_skims['WALK'] * np.where((trips.trip_mode == 'WALK'),1,0)"
+#,_Travel_Time,"_Travel_Time + odt_skims['PNROUT_LOC_TIME'] * np.where(((trips.trip_mode == 'PNR_LOC') *  outbound),1,0)"
+#,_Travel_Time,"_Travel_Time + odt_skims['PNROUT_PRM_TIME'] * np.where(((trips.trip_mode == 'PNR_PRM') *  outbound),1,0)"
+#,_Travel_Time,"_Travel_Time + odt_skims['PNROUT_MIX_TIME'] * np.where(((trips.trip_mode == 'PNR_MIX') *  outbound),1,0)"
+#,_Travel_Time,"_Travel_Time + odt_skims['KNROUT_LOC_TIME'] * np.where(((trips.trip_mode == 'KNR_LOC') *  outbound),1,0)"
+#,_Travel_Time,"_Travel_Time + odt_skims['KNROUT_PRM_TIME'] * np.where(((trips.trip_mode == 'KNR_PRM') *  outbound),1,0)"
+#,_Travel_Time,"_Travel_Time + odt_skims['KNROUT_MIX_TIME'] * np.where(((trips.trip_mode == 'KNR_MIX') *  outbound),1,0)"
+#,_Travel_Time,"_Travel_Time + odt_skims['TNCOUT_LOC_TIME'] * np.where(((trips.trip_mode == 'TNC_LOC') *  outbound),1,0)"
+#,_Travel_Time,"_Travel_Time + odt_skims['TNCOUT_PRM_TIME'] * np.where(((trips.trip_mode == 'TNC_PRM') *  outbound),1,0)"
+#,_Travel_Time,"_Travel_Time + odt_skims['TNCOUT_MIX_TIME'] * np.where(((trips.trip_mode == 'TNC_MIX') *  outbound),1,0)"
+#,_Travel_Time,"_Travel_Time + odt_skims['PNRIN_LOC_TIME'] * np.where(((trips.trip_mode == 'PNR_LOC') *  inbound),1,0)"
+#,_Travel_Time,"_Travel_Time + odt_skims['PNRIN_PRM_TIME'] * np.where(((trips.trip_mode == 'PNR_PRM') *  inbound),1,0)"
+#,_Travel_Time,"_Travel_Time + odt_skims['PNRIN_MIX_TIME'] * np.where(((trips.trip_mode == 'PNR_MIX') *  inbound),1,0)"
+#,_Travel_Time,"_Travel_Time + odt_skims['KNRIN_LOC_TIME'] * np.where(((trips.trip_mode == 'KNR_LOC') *  inbound),1,0)"
+#,_Travel_Time,"_Travel_Time + odt_skims['KNRIN_PRM_TIME'] * np.where(((trips.trip_mode == 'KNR_PRM') *  inbound),1,0)"
+#,_Travel_Time,"_Travel_Time + odt_skims['KNRIN_MIX_TIME'] * np.where(((trips.trip_mode == 'KNR_MIX') *  inbound),1,0)"
+#,_Travel_Time,"_Travel_Time + odt_skims['TNCIN_LOC_TIME'] * np.where(((trips.trip_mode == 'TNC_LOC') *  inbound),1,0)"
+#,_Travel_Time,"_Travel_Time + odt_skims['TNCIN_PRM_TIME'] * np.where(((trips.trip_mode == 'TNC_PRM') *  inbound),1,0)"
+#,_Travel_Time,"_Travel_Time + odt_skims['TNCIN_MIX_TIME'] * np.where(((trips.trip_mode == 'TNC_MIX') *  inbound),1,0)"
+,Travel_Time,_Travel_Time
+
 # ea trips,,
 ,DRIVEALONE_NOTR_EA_LOW,((trips.trip_mode == 'DRIVEALONE') & is_ea & ~ownTrp & vot1) * tour_participants
 ,SHARED2_NOTR_EA_LOW,"(trips.trip_mode.isin(['SHARED2','TAXI','TNC_SINGLE']) & is_ea & ~ownTrp & vot1) * tour_participants  / OCC_SHARED2"
