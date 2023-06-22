@@ -1,5 +1,6 @@
 
 inherit_settings: True
 sharrow: test
+recode_pipeline_columns: True
 chunk_training_mode: disabled
 households_sample_size: 100

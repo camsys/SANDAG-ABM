@@ -26,8 +26,6 @@ want_dest_choice_sample_tables: False
 # households with all tour types
 trace_hh_id:
 
-chunk_training_mode: disabled
-
 # trace origin, destination in accessibility calculation; comment out or leave empty for no trace
 #trace_od:
 
@@ -58,8 +56,6 @@ input_table_list:
     filename: persons.csv
     index_col: person_id
     rename_columns:
-      PERID: person_id
-    rename_columns:
       hhid: household_id
       perid: person_id
       pnum: PNUM
@@ -79,7 +75,7 @@ input_table_list:
       MAZ: zone_id
     recode_columns:
       zone_id: zero-based
-      TAZ: zero-based
+      TAZ: land_use_taz.TAZ
     drop_columns:
       - i1
       - i2
