@@ -63,6 +63,9 @@ class SimpleLocationComponentSettings(BaseLogitComponentSettings, extra="forbid"
     annotate_routes: PreprocessorSettings | None = None
     annotate_establishments: PreprocessorSettings | None = None
 
+    LOGIT_TYPE: str = "MNL"
+    NESTS: dict | None = None
+
 
 def annotate_routes(
     state: workflow.State,

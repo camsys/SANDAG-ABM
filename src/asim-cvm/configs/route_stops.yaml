@@ -18,18 +18,10 @@ location_settings:
     - commercial
   SIZE_TERM_SELECTOR: commerce
   CHOOSER_SEGMENT_COLUMN_NAME: next_stop_location_type
+  LOGIT_TYPE: NL
+  NESTS:
+    name: root
+    coefficient: "1"
 dwell_settings:
-  purpose_adjustments:
-    base:
-      shape: 2
-      scale: 2
-    service:
-      shape: 5
-      scale: 1
-  location_adjustments:
-    warehouse:
-      shape: 10
-  default_gamma:
-    shape: 5
-    scale: 1
+  before_noon_column: before_noon
 travel_time_skim: TRK_M_TIME
